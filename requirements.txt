@@ -1,0 +1,2 @@
+# only needed for the LLM step; without ANTHROPIC_API_KEY the rule-based path runs on the stdlib
+anthropic>=2.12,<3
