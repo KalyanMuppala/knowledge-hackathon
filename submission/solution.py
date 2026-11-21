@@ -56,7 +56,6 @@ except ImportError:
 
 from ks.answering import Answerer  # noqa: E402
 from ks.conflicts import ConflictEngine  # noqa: E402
-from ks.llm import LLM  # noqa: E402
 from ks.query import analyze  # noqa: E402
 from ks.search import Searcher  # noqa: E402
 from ks.store import Store  # noqa: E402
@@ -71,8 +70,7 @@ class TemporalKnowledge:
         self.store = Store()
         self.searcher = Searcher(self.store)
         self.engine = ConflictEngine(self.store)
-        self.llm = LLM()
-        self.answerer = Answerer(self.store, self.searcher, self.engine, self.llm)
+        self.answerer = Answerer(self.store, self.searcher, self.engine)
         self._cache: dict[tuple, Answer] = {}
         self._lock = threading.Lock()
         self._dirty = False

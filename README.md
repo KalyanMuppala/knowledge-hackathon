@@ -10,11 +10,9 @@ Design notes, the rules for deciding what's current, and local results are in
 
 ## Running
 
-Python 3.9+ (the graders use 3.11). The `anthropic` package needs 3.10+.
+Python 3.9+ (the graders use 3.11). Standard library only, no API keys.
 
 ```bash
-pip install -r requirements.txt
-export ANTHROPIC_API_KEY=...          # optional, see NOTES.md
 python harness/run_eval.py --submission submission --eval eval/public_eval.jsonl
 ```
 
@@ -39,9 +37,8 @@ submission/ks/
   store.py       chunks and facts with the snapshots they appeared in
   search.py      BM25 limited to one snapshot, weighted by page trust and age
   conflicts.py   per-snapshot winners, stale pages, contradictions
-  rules.py       deterministic answers (rate lookup, counts, hours, links...)
-  answering.py   evidence + prompt + LLM call, with the rule-based fallback
-  llm.py         Anthropic client wrapper
+  rules.py       rate lookup, counts, hours, addresses, links, refusals
+  answering.py   retrieval for one question + picking the answer
   query.py       as-of dates in the question, intents
 tools/           dev scripts and my held-out question sets
 tests/           unit tests + end-to-end run on harness/selftest

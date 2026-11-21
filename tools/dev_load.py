@@ -13,11 +13,9 @@ def load(snap_dir=ROOT / "snapshots"):
     return load_snapshots(Path(snap_dir))
 
 
-def build_system(use_llm: bool = False):
+def build_system():
     import solution
     ks = solution.build()
-    if not use_llm:
-        ks.llm.client = None
     for snap in load():
         ks.ingest(snap)
     return ks

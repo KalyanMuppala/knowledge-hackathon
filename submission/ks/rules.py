@@ -1,8 +1,6 @@
-"""Deterministic answers for the common question shapes.
-
-Used two ways: as the answer when no LLM key is configured, and as hints in the
-LLM prompt ("these rate-sheet rows match the question") when one is.
-"""
+"""Answers for the common question shapes: rate-table lookups (with tiers, history
+and minimums), counts from press releases, routing number, hours, addresses, links,
+and refusals for products the site doesn't price."""
 from __future__ import annotations
 
 import re
@@ -401,23 +399,6 @@ def stale_note(engine: ConflictEngine, snap: int, matches: list[RateMatch]) -> O
                 return (f"{url_path(o.url)} still shows {o.fact.value}; the official "
                         f"{url_path(win.obs.url)} page ({win.value}) was used.")
     return None
-
-
-def rate_hints(store: Store, engine: ConflictEngine, qi: QueryInfo, snap: int) -> list[str]:
-    matches, mode = match_rates(store, engine, qi, snap, limit=10)
-    out = []
-    seen = set()
-    for c in matches:
-        product, tier, _ = c.rf.key
-        if (product, tier) in seen:
-            continue
-        seen.add((product, tier))
-        f = c.fact
-        eff = f" (rates effective {f.effective.isoformat()})" if f.effective else ""
-        out.append(f"{product} | {f.label}: {_metric_pair(engine, snap, c.rf)} "
-                   f"[{url_path(c.rf.obs.url)}{eff}]")
-    return out
-
 
 
 ROUTING = re.compile(r"routing number:?\**\s*(\d{9})", re.I)
