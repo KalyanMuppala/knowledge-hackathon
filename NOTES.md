@@ -1,127 +1,134 @@
 # Notes
 
-The solution lives in `submission/` (`solution.py` + the `ks` package). Run it with
+Code is in `submission/` (`solution.py` plus the `ks` package). To run:
 
 ```
 python harness/run_eval.py --submission submission --eval eval/public_eval.jsonl
 ```
 
-## How it works
+## Approach
 
-**Ingest.** Every page is cleaned (images, data URIs, tracking params, modal boilerplate,
-country/state pickers from forms, and the "Handpicked for You" teaser blocks that carry
-*other* articles' dates). Each page gets a kind from its URL and content: rate sheet,
-product page, info page, news, blog, promo landing page, calculator, listing or expired
-offer. Pages are split into section chunks; every table becomes its own chunk together
-with its caption and the "Rates are effective as of ..." line under it. Consecutive crawls
-are mostly identical, so a chunk is stored once with the list of snapshots it appeared in.
-"The site as of date D" is then just the chunks present in the latest snapshot taken on or
-before D. A page that disappears from a crawl is still searchable but flagged as "last seen
-on ..." and down-weighted. Ingesting all five snapshots takes about 2.5 seconds.
+I started by following a handful of facts (the 60-month auto rate, the 30-year mortgage,
+the certificate specials, branch counts) through all five crawls. Nearly every wrong answer
+comes from one of three places: a page that never gets updated (calculators, landing pages,
+a couple of old guide pages), a value that legitimately changed between crawls, or
+press-release boilerplate that ages ("...has 23 branch office locations"). So the system is
+built around knowing which page to trust and when a value was true, rather than around search.
 
-**Facts.** Rate tables are parsed into facts keyed by `(product, tier, metric)`, e.g.
-`("auto loan", "tier1|60 month", "APR") -> 5.39%`. The key is built so the same fact printed
-on different pages collides, while things that only look alike don't: 48 vs 60 months, rate
-vs APR vs APY, standard vs jumbo, regular vs special, personal vs business (rates on
-`/business` pages are business rates), Roth vs Traditional. Model-year rows are keyed by
-rank (newest tier = `tier1`) instead of the literal label. When the rate sheet moved from
-"2023-26" to "2024-27", the vehicle-affordability calculator kept the old label and the old
-5.34%; keying by rank lines it up with the new 5.39% row so it shows up as stale.
+### Ingest
 
-**Answering.** Pick the snapshot for `as_of` (or a date written in the question, like "as of
-May 2026"), retrieve with BM25 restricted to that snapshot, weighted by page trust and
-article age. Then:
+Pages get cleaned first: images and data URIs, tracking params, the "leaving our site"
+modal, country and state pickers from forms, and the "Handpicked for You" / "Recent News"
+blocks, which carry other articles' dates and snippets. Each page gets a kind from its URL
+and content (rate sheet, product, info, news, blog, promo, calculator, listing, expired
+offer) and is split into section chunks. A table becomes its own chunk together with its
+caption and the "Rates are effective as of" line under it.
 
-- Table lookups (rates, APYs, minimums, and "did it change?" timelines), the routing number,
-  headcount-type facts (branches, members, counties...) and questions about products the site
-  never prices (7/1 ARM, construction loans) are answered straight from the resolved facts.
-  That's 24 of the 40 public questions. The rate lookup understands tiers: terms ("five-year",
-  "84 months"), balances and loan amounts ("$90k" picks the tightest "$X or less" bracket),
-  model years ("a new car" is the newest tier), jumbo vs non-jumbo, purchase vs refinance.
-- Yes/no questions about a value ("do any savings tiers pay 0.35%?") are checked against the
-  rows ("No. The highest is Share Savings ($25,000+) at 0.20% APY."), and "what savings
-  accounts do you offer?" lists the products that currently have a rate table.
-- Hours come from the schedules printed in branch press releases (typical schedule plus the
-  variations). A question about a named branch with no published hours gets "I don't know"
-  rather than another branch's hours.
-- Link questions use the site's own links; "where can I see X rates" resolves to the product
-  page that hosts X's rate table, in the form other pages link to (`...#rates`).
-- Everything else is answered with the best-matching sentence(s) from the top chunks
-  (footnotes, table rows and FAQ questions skipped). If no chunk covers the question's key
-  terms, the answer is "I don't know".
+Consecutive crawls are mostly identical, so a chunk is stored once along with the snapshots
+it appeared in. "The site as of date D" is the set of chunks in the last snapshot taken on or
+before D. If a page drops out of a crawl it stays searchable, down-weighted. Ingesting all
+five snapshots takes about 2.5 seconds.
 
-Answers never mention the stale value. If the site disagreed, that goes in `conflict_note`.
-Refusals ("I don't know, that isn't listed") contain no numbers, so they can't accidentally
-quote a rate. Answers are cached per (question, snapshot), so asking twice gives the same text.
+### Facts and conflicts
 
-## How I decide what's current
+Rate tables are parsed into facts keyed by `(product, tier, metric)`, for example
+`("auto loan", "tier1|60 month", "APR") -> 5.39%`. Getting the key right is most of the work.
+The same fact printed on two pages has to collide; things that only look alike must not:
+48 vs 60 months, rate vs APR vs APY, standard vs jumbo, regular vs special, personal vs
+business, Roth vs Traditional. Model-year rows are keyed by rank (newest tier first)
+instead of the label, because the rate sheet went from "2023-26" to "2024-27" while the
+vehicle-affordability calculator kept the old label and the old 5.34%.
 
-These are applied in order, both for answers and for `conflicts()`:
+For every fact and snapshot there's a winner. Pages that print a losing value are marked
+stale for that snapshot, which also pushes them down in retrieval. `conflicts()` reports 30
+contradictions with the values (oldest first), where each came from, the winner and why.
+They include the stale calculator, switch-and-earn and guide-page tables (auto loans,
+mortgages), rates that changed between crawls (certificate specials, 1st Rate Checking
+3.00% to 2.50%), drifting boilerplate (branches, members, assets, counties, Forbes), and one
+in-page slip: the Traditional 10-month jumbo IRA special still shows 3.90% while the Roth row
+and the certificate special say 4.00%. Purchase and refinance rows, and personal, business
+and IRA copies with the same history, are reported once rather than three times.
 
-1. **Time.** For "now" only the newest snapshot counts; older snapshots are history. With
-   `as_of`, the newest snapshot on or before that date is "now".
-2. **Authority.** Official rate sheet (`/rates`, `/business-rates`) > product page > other
-   site pages > news > blog / promo pages > calculators. Expired-offer pages never win.
-   Calculators, landing pages and old guide pages (`/homebuying-guidance`, `/mortgage-refi`,
-   `/switch-and-earn`) are where most stale numbers live.
-3. **Freshness.** Between pages of the same kind, the later "Rates are effective as of"
-   date wins.
-4. **Articles.** Boilerplate that drifts as press releases age ("has 23 branch office
-   locations", "the fourth time Forbes recognized Dupaco") is taken from the most recently
-   published article. That gives 22 branches and "fifth time" for Forbes.
-5. **Qualifiers are not conflicts.** Different tiers, terms or metrics of the same product
-   are separate facts.
+### Answering
 
-`conflicts()` reports 30 contradictions. Each has the competing values (oldest first), the
-pages and snapshots they came from, the winning value and the reason. Examples: stale
-calculator, switch-and-earn and old guide-page tables vs the rate sheet (auto loans,
-mortgages); rate changes between crawls (certificate specials, 1st Rate Checking 3.00% ->
-2.50%); press-release boilerplate (branches, members, assets, counties, Forbes); and one
-in-page inconsistency (Traditional 10-month jumbo IRA special still at 3.90% while the Roth
-row and the certificate special say 4.00%). Purchase/refinance pairs and personal/business/IRA
-copies with identical histories are merged so the same story isn't reported several times.
+The question picks the snapshot (`as_of`, or a date in the text like "as of May 2026"), then
+BM25 retrieves from that snapshot only, weighted by page trust and article age.
+
+Most questions are table lookups: rates, APYs, minimums, "has this changed?", plus the
+routing number, headcount-type facts and products the site never prices (a 7/1 ARM, a
+construction loan). Those come straight from the resolved facts, 24 of the 40 public
+questions. The lookup understands the usual ways people name a tier: "five-year",
+"$90k" (the tightest "$X or less" mortgage bracket), "a new car" (newest model year),
+"non-jumbo", refinance vs purchase. It also handles yes/no checks ("do any savings tiers pay
+0.35%?" gets "No. The highest is Share Savings ($25,000+) at 0.20% APY.") and product lists.
+
+Hours come from the schedules printed in branch press releases. A named branch with no
+published schedule gets "I don't know" instead of another branch's hours. Link questions
+use the site's own links. Anything else is answered from the best-matching sentences in the
+top chunks, and if nothing really covers the question, the answer is "I don't know".
+
+An answer never repeats a stale value; if the pages disagreed, that goes in `conflict_note`.
+Refusals contain no numbers. Answers are cached per question and snapshot, so asking twice
+gives the same text.
+
+## What counts as current
+
+Applied in this order, for answers and for `conflicts()` alike:
+
+1. Newest snapshot wins. Older snapshots are history, unless `as_of` asks for them.
+2. Then page authority: the rate sheet beats product pages, which beat other site pages,
+   then news, then blog and promo pages, then calculators. Expired offers never win.
+3. Same kind of page: the later "Rates are effective as of" date wins.
+4. Facts in articles come from the most recently published article. That's why the answer
+   is 22 branches and "fifth time" for Forbes.
+5. A different tier, term or metric is a different fact, not a conflict.
 
 ## API keys
 
-None. There's no LLM or paid API in the loop and no network calls; everything runs on the
-Python standard library (`requirements.txt` is empty on purpose). I chose this deliberately:
-every question shape I found in the data could be answered exactly from the parsed facts and
-the text, the result is fully deterministic (which the consistency pillar rewards), and
-answers take well under a tenth of a second.
+None. No LLM or paid API, no network calls, standard library only (`requirements.txt` is
+intentionally empty). The question shapes in this data can be answered exactly from the
+parsed facts and the text, and being deterministic helps the consistency score and keeps
+answers well under a tenth of a second.
+
+## Things that bit me
+
+- The vehicle-affordability calculator labels its APR column "Annual Percentage Yield".
+  Cell text wins over the header when the two disagree.
+- Promo tables have two APY columns ("for 1st 6 months" and "after promotional period"),
+  so header qualifiers become part of the metric.
+- The CMS leaves literal `\r\n` escapes in some text, and a naive sentence splitter breaks
+  "call 800-373-7600, ext." and "South Locust St." in half.
+- Certificate tables only have "Min. to Earn", not "Min. to Open".
+- "Do any certificates pay 4.20%?" first came back "No", because jumbo rows were being
+  penalized when the question didn't say "jumbo". Value checks now look at every tier.
 
 ## Local results
-
-`harness/run_eval.py`:
 
 | set | questions | accuracy | stale-value hits | p95 latency |
 |---|---|---|---|---|
 | `eval/public_eval.jsonl` | 40 | 0.938 | 0 | 0.10 s |
-| `tools/dev_eval.jsonl` (my held-out questions) | 46 | 1.00 | 0 | 0.10 s |
-| `tools/dev_eval2.jsonl` (second held-out batch) | 25 | 1.00 | 0 | 0.10 s |
-| `harness/selftest` (+ conflicts gold) | 5 | 1.00, conflicts F1 1.00 | 0 | - |
+| `tools/dev_eval.jsonl` (questions I wrote) | 46 | 1.00 | 0 | 0.10 s |
+| `tools/dev_eval2.jsonl` (second batch) | 25 | 1.00 | 0 | 0.10 s |
+| `harness/selftest` with its conflicts gold | 5 | 1.00, conflicts F1 1.00 | 0 | - |
 
-Paraphrase and repeat consistency are both 1.0 on the public set.
+Paraphrase and repeat consistency are 1.0 on the public set. The two public misses:
+`dup-005` has no `must_include`, so it can't score without the scorer's judge, and `dup-081`
+(who can join) needs the charter area and the three states from two different pages, which
+sentence extraction can't combine. I wrote the two extra question files against the
+snapshots (paraphrases, other products and tiers, as-of dates, history, refusals) to check
+the rules weren't just fitted to the public set.
 
-Of the two public misses, `dup-005` has no `must_include`, so it scores 0 for everyone unless
-the scorer's optional judge is on; `dup-081` (who can join) needs the charter area and the
-states combined from two different pages, which sentence extraction doesn't do. The two
-held-out files are questions I wrote against the snapshots (paraphrases, other products and
-tiers, as-of dates, history and refusals) to check the rules weren't just fitted to the
-public set. `tests/` covers parsing, classification and dates, the self-test fixture end to
-end, and a small made-up two-crawl site that exercises tier matching, stale pages, as-of,
-value checks and refusals without needing the real snapshots (`pytest`). Formatting and
-linting use ruff (`pyproject.toml`).
+`pytest` runs without the snapshots. It covers parsing, classification, dates, the
+self-test fixture end to end, and a small made-up two-crawl site with a stale calculator.
+Formatting and linting are ruff (`pyproject.toml`).
 
-## Limitations / next steps
+## Limitations
 
-- Product vocabulary (`ks/rules.py` `PRODUCT_PATTERNS`, `ks/tables.py` `_family`) is written
-  for this credit union. Pointing it at another site means extending those lists.
-- The conflict list is every genuine contradiction I could find. If the grader's list is
-  shorter, the older auto-loan tiers and the asset/membership drift are the first things
-  I'd drop to raise precision.
-- Retrieval is plain BM25 with a synonym table. Embeddings would help paraphrases the
-  synonym table doesn't cover, at the cost of a heavier install.
-- Open-ended answers are extracted sentences, so they read a bit mechanically and can't
-  combine facts from two pages. With an API budget, the place I'd add an LLM is exactly
-  there: phrase those answers from the same annotated chunks, and keep the table, count and
-  refusal paths deterministic.
+- The product vocabulary (`PRODUCT_PATTERNS` in `ks/rules.py`, `_family` in `ks/tables.py`)
+  is specific to this credit union.
+- The conflict list is every real contradiction I found. If the graders' list is shorter,
+  the older auto-loan tiers and the asset/membership drift are what I'd drop first.
+- Retrieval is BM25 with a synonym table; embeddings would catch paraphrases the table misses.
+- Open-ended answers are extracted sentences, so they can't merge facts from two pages. With
+  an API budget, that's where I'd put a model: phrasing those answers from the same
+  annotated chunks, while table lookups, counts and refusals stay deterministic.

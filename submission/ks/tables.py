@@ -23,7 +23,7 @@ _RANGE = re.compile(r"(\d{1,2}(?:\.\d{1,3})?)\s?%?\s*(?:-|–|to)\s*(\d{1,2}(?:\
 @dataclass(frozen=True)
 class Fact:
     product: str  # canonical product family, e.g. "auto loan", "certificate special"
-    tier: str  # normalised tier key, e.g. "tier1|60 month", "$25000+"
+    tier: str  # normalized tier key, e.g. "tier1|60 month", "$25000+"
     metric: str  # "APY" | "dividend rate" | "APR" | "rate" (+ qualifier)
     value: str  # display value, e.g. "5.39%" or "12.50%-19.50%"
     num: float  # first number in value (for sorting / comparisons)

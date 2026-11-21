@@ -20,7 +20,7 @@ def test_footnotes_and_model_year_rank():
 
 
 def test_relabelled_stale_table_lines_up():
-    # a calculator page with a mislabelled header and last year's tier label
+    # a calculator page with a mislabeled header and last year's tier label
     stale = table_facts(STALE_AUTO, "Auto Loan Rates", None)
     assert stale[0].key == ("auto loan", "tier1|60 month", "APR")
 

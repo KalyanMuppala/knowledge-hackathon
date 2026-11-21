@@ -820,7 +820,7 @@ def link_answer(
     store: Store, qi: QueryInfo, snap: int, chunks: list, engine: ConflictEngine | None = None
 ) -> tuple[str, str] | None:
     """'What link should I use for X?': score links by how well anchor text and URL match
-    the question, favouring links that sit inside the most relevant chunks."""
+    the question, favoring links that sit inside the most relevant chunks."""
     from .textutil import tokenize
 
     if engine is not None and "rate" in qi.intents:
