@@ -8,6 +8,7 @@
 
 See NOTES.md for the design and the rules used to decide what is current.
 """
+
 from __future__ import annotations
 
 import re
@@ -15,7 +16,6 @@ import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -33,26 +33,28 @@ except ImportError:
     try:
         from contract import Answer, Conflict, Source  # type: ignore
     except ImportError:
+
         @dataclass
         class Source:  # type: ignore[no-redef]
             url: str
-            snapshot_id: Optional[str] = None
-            quote: Optional[str] = None
+            snapshot_id: str | None = None
+            quote: str | None = None
 
         @dataclass
         class Answer:  # type: ignore[no-redef]
             text: str
             sources: list = field(default_factory=list)
             confident: bool = True
-            conflict_note: Optional[str] = None
+            conflict_note: str | None = None
 
         @dataclass
         class Conflict:  # type: ignore[no-redef]
             topic: str
             values: list
             sources: list
-            resolution: Optional[str] = None
-            reason: Optional[str] = None
+            resolution: str | None = None
+            reason: str | None = None
+
 
 from ks.answering import Answerer  # noqa: E402
 from ks.conflicts import ConflictEngine  # noqa: E402
@@ -80,9 +82,9 @@ class TemporalKnowledge:
             self.store.add_snapshot(snapshot)
             self._dirty = True
             self._cache.clear()
-            self._refresh()          # do the indexing work now (ingest is not timed)
+            self._refresh()  # do the indexing work now (ingest is not timed)
 
-    def answer(self, question: str, as_of: Optional[str] = None) -> Answer:
+    def answer(self, question: str, as_of: str | None = None) -> Answer:
         with self._lock:
             self._refresh()
         if not self.store.snapshots:
@@ -91,7 +93,7 @@ class TemporalKnowledge:
         snap = self.store.view_for(qi.as_of)
         key = (_norm_question(question), snap)
         cached = self._cache.get(key)
-        if cached is not None:                 # asking twice gives the same answer
+        if cached is not None:  # asking twice gives the same answer
             return cached
         res = self.answerer.answer(qi, snap)
         sid = self.store.snapshots[res.get("snap", snap)].snapshot_id
@@ -109,14 +111,18 @@ class TemporalKnowledge:
             self._refresh()
         out = []
         for rec in self.engine.all_conflicts():
-            out.append(Conflict(
-                topic=rec.topic,
-                values=list(rec.values),
-                sources=[Source(url=u, snapshot_id=self.store.snapshots[s].snapshot_id, quote=q)
-                         for u, s, q in rec.sources],
-                resolution=rec.resolution,
-                reason=rec.reason,
-            ))
+            out.append(
+                Conflict(
+                    topic=rec.topic,
+                    values=list(rec.values),
+                    sources=[
+                        Source(url=u, snapshot_id=self.store.snapshots[s].snapshot_id, quote=q)
+                        for u, s, q in rec.sources
+                    ],
+                    resolution=rec.resolution,
+                    reason=rec.reason,
+                )
+            )
         return out
 
     def _refresh(self) -> None:

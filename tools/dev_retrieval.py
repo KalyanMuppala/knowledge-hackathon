@@ -1,7 +1,8 @@
 """Show what retrieval and the fast path do for each question in an eval file.
 
-    python tools/dev_retrieval.py eval/public_eval.jsonl [question ids...]
+python tools/dev_retrieval.py eval/public_eval.jsonl [question ids...]
 """
+
 import json
 import sys
 
@@ -25,5 +26,3 @@ for line in open(path):
     print("   fast path:", fast["text"][:150] if fast else "-")
     for ch, score in zip(ev.chunks, ev.scores):
         print(f"   {score:6.2f} {ch.kind:10s} {ch.url[:80]}")
-    for note in ev.notes:
-        print("   note:", note[:150])

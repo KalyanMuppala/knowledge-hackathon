@@ -7,12 +7,12 @@ product page, calculator, landing page), and different for things that only look
 alike (48 vs 60 months, standard vs jumbo, rate vs APY, personal vs business).
 Same key + different value = a contradiction.
 """
+
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
 
 from .textutil import PCT, clean_cell, norm_label
 
@@ -22,14 +22,14 @@ _RANGE = re.compile(r"(\d{1,2}(?:\.\d{1,3})?)\s?%?\s*(?:-|–|to)\s*(\d{1,2}(?:\
 
 @dataclass(frozen=True)
 class Fact:
-    product: str          # canonical product family, e.g. "auto loan", "certificate special"
-    tier: str             # normalised tier key, e.g. "tier1|60 month", "$25000+"
-    metric: str           # "APY" | "dividend rate" | "APR" | "rate" (+ qualifier)
-    value: str            # display value, e.g. "5.39%" or "12.50%-19.50%"
-    num: float            # first number in value (for sorting / comparisons)
-    label: str            # human readable row label, e.g. "2024-27 Model Year, 60 Months"
-    caption: str          # table caption as printed
-    effective: Optional[date]
+    product: str  # canonical product family, e.g. "auto loan", "certificate special"
+    tier: str  # normalised tier key, e.g. "tier1|60 month", "$25000+"
+    metric: str  # "APY" | "dividend rate" | "APR" | "rate" (+ qualifier)
+    value: str  # display value, e.g. "5.39%" or "12.50%-19.50%"
+    num: float  # first number in value (for sorting / comparisons)
+    label: str  # human readable row label, e.g. "2024-27 Model Year, 60 Months"
+    caption: str  # table caption as printed
+    effective: date | None
 
     @property
     def key(self) -> tuple[str, str, str]:
@@ -59,11 +59,13 @@ def parse_table(md: str) -> tuple[list[str], list[list[str]]]:
 
 _METRIC_WORDS = re.compile(
     r"annual percentage (yield|rate)|\(?\bap[ry]\b\)?|dividend rate|dividend|interest rate|\brate\b|"
-    r"\(?as low as\)?|[*()]|\d+$", re.I)
+    r"\(?as low as\)?|[*()]|\d+$",
+    re.I,
+)
 
 
-def header_metric(h: str) -> Optional[str]:
-    """"Annual Percentage Yield (APY)1" -> "APY", "APY* After Promotional Period" ->
+def header_metric(h: str) -> str | None:
+    """ "Annual Percentage Yield (APY)1" -> "APY", "APY* After Promotional Period" ->
     "APY (after promotional period)". Payment and points columns aren't facts."""
     hl = h.lower()
     if re.search(r"\bmin(\.|imum)?\b.*\bopen", hl):
@@ -91,14 +93,26 @@ _LABEL_SKIP = re.compile(r"payment|min\.|minimum|points", re.I)
 _DOLLARS = re.compile(r"\$\s?(\d[\d,]*(?:\.\d+)?)")
 
 # product names that appear as the first cell of rate-sheet rows
-_ROW_PRODUCTS = ("business share savings", "share savings", "bright savings", "you name it savings",
-                 "holiday club savings", "launchpad savings", "investor's choice money market",
-                 "achieve money market", "high-yield savings", "health savings account",
-                 "business 1st rate checking", "1st rate checking", "free checking",
-                 "business platinum visa", "business rewards visa")
+_ROW_PRODUCTS = (
+    "business share savings",
+    "share savings",
+    "bright savings",
+    "you name it savings",
+    "holiday club savings",
+    "launchpad savings",
+    "investor's choice money market",
+    "achieve money market",
+    "high-yield savings",
+    "health savings account",
+    "business 1st rate checking",
+    "1st rate checking",
+    "free checking",
+    "business platinum visa",
+    "business rewards visa",
+)
 
 
-def _family(text: str, label: str, special_ok: bool = True) -> Optional[str]:
+def _family(text: str, label: str, special_ok: bool = True) -> str | None:
     """Keyword rules. When applied to the surrounding text (not the table's own
     caption) "special" is ignored: that text often includes the previous table's caption."""
     business = "business" in text
@@ -148,12 +162,18 @@ def _family(text: str, label: str, special_ok: bool = True) -> Optional[str]:
     return None
 
 
-def canonical_product(caption: str, label: str, header_label: str = "", context: str = "",
-                      business_page: bool = False) -> str:
+def canonical_product(
+    caption: str, label: str, header_label: str = "", context: str = "", business_page: bool = False
+) -> str:
     name = _canonical_product(caption, label, header_label, context)
-    if business_page and "business" not in name and name != "unknown" and \
-            not name.endswith("loan") and name not in ("mortgage", "heloc"):
-        name = "business " + name            # rates on /business pages are business rates
+    if (
+        business_page
+        and "business" not in name
+        and name != "unknown"
+        and not name.endswith("loan")
+        and name not in ("mortgage", "heloc")
+    ):
+        name = "business " + name  # rates on /business pages are business rates
     return name
 
 
@@ -187,7 +207,7 @@ def _canonical_product(caption: str, label: str, header_label: str, context: str
 _MODEL_YEAR = re.compile(r"((?:19|20)\d{2})(?:\s*-\s*(\d{2,4}))?", re.I)
 
 
-def _model_year_top(label: str) -> Optional[int]:
+def _model_year_top(label: str) -> int | None:
     """2027 for "2024-27 Model Year", 2026 for "Model Year 2026-23"."""
     if "model year" not in label.lower():
         return None
@@ -210,8 +230,9 @@ def parse_value(cell: str) -> tuple[str, float]:
     return f"{m.group(1)}%", float(m.group(1))
 
 
-def table_facts(table_md: str, caption: str, effective: Optional[date],
-                context: str = "", business_page: bool = False) -> list[Fact]:
+def table_facts(
+    table_md: str, caption: str, effective: date | None, context: str = "", business_page: bool = False
+) -> list[Fact]:
     header, body = parse_table(table_md)
     if not header or not body:
         return []
@@ -232,7 +253,7 @@ def table_facts(table_md: str, caption: str, effective: Optional[date],
             elif m and PCT.search(c):
                 vm = re.search(r"\b(APR|APY)\b", c)
                 if vm and m in ("APR", "APY"):
-                    m = vm.group(1)          # trust the cell over a mislabeled header
+                    m = vm.group(1)  # trust the cell over a mislabeled header
                 values.append((m, c))
             elif c and c not in ("—", "-", "N/A") and not _LABEL_SKIP.search(h):
                 labels.append(c)
@@ -240,8 +261,7 @@ def table_facts(table_md: str, caption: str, effective: Optional[date],
             rows.append((labels, values))
     # Key model-year rows by rank (newest = tier1), not by label: when the rate sheet
     # moved from "2023-26" to "2024-27", the calculator kept the old label and rate.
-    tops = sorted({t for labels, _ in rows for t in [_model_year_top(" ".join(labels))] if t},
-                  reverse=True)
+    tops = sorted({t for labels, _ in rows for t in [_model_year_top(" ".join(labels))] if t}, reverse=True)
     rank = {t: i + 1 for i, t in enumerate(tops)}
     facts = []
     for labels, values in rows:
@@ -251,7 +271,7 @@ def table_facts(table_md: str, caption: str, effective: Optional[date],
         for lab in labels:
             nl = norm_label(lab)
             if product.startswith(nl) or nl in product:
-                continue                       # the product name, not a tier
+                continue  # the product name, not a tier
             top = _model_year_top(lab)
             if top is not None and top in rank:
                 tier_parts.append(f"tier{rank[top]}")
@@ -272,11 +292,12 @@ def table_facts(table_md: str, caption: str, effective: Optional[date],
     return facts
 
 
-_PROSE = re.compile(r"^[-*\s]*([A-Za-z0-9][^:\n|]{2,60}?)\s*:\s*(\$\s?\d[\d,]*(?:\.\d+)?|\d{1,2}(?:\.\d{1,3})?\s?%)\s*$",
-                    re.M)
+_PROSE = re.compile(
+    r"^[-*\s]*([A-Za-z0-9][^:\n|]{2,60}?)\s*:\s*(\$\s?\d[\d,]*(?:\.\d+)?|\d{1,2}(?:\.\d{1,3})?\s?%)\s*$", re.M
+)
 
 
-def prose_facts(text: str, heading: str, effective: Optional[date]) -> list[Fact]:
+def prose_facts(text: str, heading: str, effective: date | None) -> list[Fact]:
     """Facts written as "Label: value" lines ("6-month certificate APY: 3.50%")."""
     out = []
     for m in _PROSE.finditer(text):
@@ -299,3 +320,37 @@ def prose_facts(text: str, heading: str, effective: Optional[date]) -> list[Fact
         num = float(re.sub(r"[^\d.]", "", value) or 0)
         out.append(Fact(product, norm_label(name), metric, value, num, name, heading, effective))
     return out
+
+
+_PROPER = {
+    "share savings": "Share Savings",
+    "bright savings": "Bright Savings",
+    "you name it savings": "You Name It Savings",
+    "holiday club savings": "Holiday Club Savings",
+    "launchpad savings": "Launchpad Savings",
+    "investor's choice money market": "Investor's Choice Money Market",
+    "achieve money market": "Achieve Money Market",
+    "high-yield savings": "High-Yield Savings",
+    "health savings account": "Health Savings Account",
+    "1st rate checking": "1st Rate Checking",
+    "free checking": "Free Checking",
+    "platinum visa": "Platinum Visa",
+    "rewards visa": "Rewards Visa",
+    "heloc": "HELOC",
+    "certificate": "certificate",
+    "certificate special": "certificate special",
+}
+
+
+def proper(product: str) -> str:
+    biz = product.startswith("business ") or product.endswith(" (business)")
+    base = product.replace("business ", "").replace(" (business)", "")
+    name = _PROPER.get(base, base)
+    return f"Business {name}" if biz else name
+
+
+def tier_text(product: str, label: str) -> str:
+    """The part of a row label that isn't the product name: '$10,000 - $24,999.99'."""
+    head, _, rest = label.partition(", ")
+    base = product.split(" (")[0].replace("business ", "")
+    return rest if rest and head.lower().startswith(base[:6]) else label

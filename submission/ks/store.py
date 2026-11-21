@@ -4,12 +4,12 @@ Consecutive crawls are mostly identical, so a chunk is stored once (keyed by url
 heading and text) with the list of snapshots that contained it. "The site as of
 date D" is then just the chunks present in the last snapshot taken on or before D.
 """
+
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
 from .pages import KIND_AUTHORITY, chunk_page, prepare_page
@@ -40,8 +40,8 @@ class ChunkRec:
     heading: str
     text: str
     kind: str
-    published: Optional[date]
-    effective: Optional[date]
+    published: date | None
+    effective: date | None
     is_table: bool
     caption: str
     facts: list[Fact]
@@ -67,7 +67,7 @@ class PageVersion:
     url: str
     title: str
     kind: str
-    published: Optional[date]
+    published: date | None
     chunk_ids: list[int]
 
 
@@ -77,10 +77,10 @@ class Store:
         self.chunks: list[ChunkRec] = []
         self._chunk_ids: dict[str, int] = {}
         self._page_cache: dict[str, tuple] = {}
-        self.pages: dict[tuple[str, int], PageVersion] = {}     # (url, snap) -> version
+        self.pages: dict[tuple[str, int], PageVersion] = {}  # (url, snap) -> version
         self.page_snaps: dict[str, list[int]] = {}
         self.fact_obs: list[FactObs] = []
-        self.new_chunks: list[int] = []          # chunk ids added by the last ingest
+        self.new_chunks: list[int] = []  # chunk ids added by the last ingest
         self._carried: dict[int, dict[int, int]] = {}
 
     def add_snapshot(self, snapshot) -> SnapInfo:
@@ -93,7 +93,7 @@ class Store:
         seen_urls: set[str] = set()
         for page in snapshot.pages:
             url = canonical_url(page.url)
-            if url in seen_urls:                 # same page under two URLs (?hsLang=en etc.)
+            if url in seen_urls:  # same page under two URLs (?hsLang=en etc.)
                 continue
             seen_urls.add(url)
             self._add_page(idx, url, page.title or "", page.markdown or "")
@@ -116,11 +116,27 @@ class Store:
                 cid = len(self.chunks)
                 eff = max(rc.effective) if rc.effective else None
                 biz = urlsplit(url).path.lower().startswith("/business")
-                facts = table_facts(rc.table, rc.caption, eff, rc.context, biz) if rc.is_table \
+                facts = (
+                    table_facts(rc.table, rc.caption, eff, rc.context, biz)
+                    if rc.is_table
                     else prose_facts(rc.text, rc.heading, eff)
+                )
                 index_text = " ".join([title, rc.heading, strip_links(rc.text)])
-                ch = ChunkRec(cid, url, title, rc.heading, rc.text, kind, pub, eff, rc.is_table,
-                              rc.caption, facts, [], tokenize(index_text))
+                ch = ChunkRec(
+                    cid,
+                    url,
+                    title,
+                    rc.heading,
+                    rc.text,
+                    kind,
+                    pub,
+                    eff,
+                    rc.is_table,
+                    rc.caption,
+                    facts,
+                    [],
+                    tokenize(index_text),
+                )
                 self.chunks.append(ch)
                 self._chunk_ids[key] = cid
                 self.new_chunks.append(cid)
@@ -137,7 +153,7 @@ class Store:
     def latest(self) -> int:
         return len(self.snapshots) - 1
 
-    def view_for(self, as_of: Optional[date]) -> int:
+    def view_for(self, as_of: date | None) -> int:
         """Snapshot that shows the site as it was on `as_of` (latest if None)."""
         if as_of is None or not self.snapshots:
             return self.latest
@@ -150,7 +166,7 @@ class Store:
     def carried(self, snap: int) -> dict[int, int]:
         """Chunks of pages that are missing from this snapshot but were seen earlier
         (chunk id -> snapshot last seen in). Crawls miss pages sometimes, so we keep
-        them searchable, with a penalty and a note in the prompt."""
+        them searchable, just down-weighted."""
         if snap not in self._carried:
             out = {}
             for url, snaps in self.page_snaps.items():

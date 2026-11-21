@@ -14,7 +14,7 @@ STALE_AUTO = """| Account Type | Balance Tier | Annual Percentage Yield |
 def test_footnotes_and_model_year_rank():
     facts = table_facts(AUTO, "Auto & Motorcycle Loans", None)
     by_tier = {f.tier: f.value for f in facts}
-    assert by_tier["tier1|60 month"] == "5.39%"        # "APR1" footnote stripped
+    assert by_tier["tier1|60 month"] == "5.39%"  # "APR1" footnote stripped
     assert by_tier["tier2|60 month"] == "5.64%"
     assert {f.product for f in facts} == {"auto loan"}
 
@@ -34,9 +34,16 @@ def test_metric_qualifiers_keep_promo_columns_apart():
 
 def test_product_detection():
     assert canonical_product("Regular", "60 Month") == "certificate"
-    assert canonical_product("Special Certificates", "17 Month Fixed Jumbo Certificate Special") == "certificate special"
-    assert canonical_product("", "Variable Interest Rate", "Business Platinum Visa") == "business platinum visa"
-    assert canonical_product("Home Loans", "Purchase: 30-Year Fixed Conventional $100,000 or less") == "mortgage"
+    assert (
+        canonical_product("Special Certificates", "17 Month Fixed Jumbo Certificate Special")
+        == "certificate special"
+    )
+    assert (
+        canonical_product("", "Variable Interest Rate", "Business Platinum Visa") == "business platinum visa"
+    )
+    assert (
+        canonical_product("Home Loans", "Purchase: 30-Year Fixed Conventional $100,000 or less") == "mortgage"
+    )
     assert canonical_product("Regular", "60 Month", business_page=True) == "business certificate"
 
 
@@ -51,5 +58,7 @@ def test_ranges_and_minimums():
 
 
 def test_prose_facts():
-    facts = prose_facts("6-month certificate APY: 3.50%\n\nLost debit card replacement fee: $2.50", "Rates", None)
+    facts = prose_facts(
+        "6-month certificate APY: 3.50%\n\nLost debit card replacement fee: $2.50", "Rates", None
+    )
     assert [(f.metric, f.value) for f in facts] == [("APY", "3.50%"), ("fee", "$2.50")]

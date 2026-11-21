@@ -13,38 +13,96 @@ every page gets a kind from its URL/content:
     document    files under /hubfs
     expired     "Oops ... This Offer Has Expired"
 """
+
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
 from urllib.parse import urlsplit
 
 from .textutil import clean_markdown, effective_dates, parse_long_date, safe_date
 
 KIND_AUTHORITY = {
-    "rates": 1.30, "product": 1.15, "info": 1.10, "news": 1.0, "document": 0.85,
-    "blog": 0.85, "promo": 0.80, "calculator": 0.55, "listing": 0.35, "expired": 0.10,
+    "rates": 1.30,
+    "product": 1.15,
+    "info": 1.10,
+    "news": 1.0,
+    "document": 0.85,
+    "blog": 0.85,
+    "promo": 0.80,
+    "calculator": 0.55,
+    "listing": 0.35,
+    "expired": 0.10,
 }
 # when two pages disagree about the same fact, the higher rank wins
-KIND_RANK = {"rates": 6, "product": 5, "info": 4, "news": 3, "document": 3, "blog": 2,
-             "promo": 2, "calculator": 1, "listing": 0, "expired": -1}
+KIND_RANK = {
+    "rates": 6,
+    "product": 5,
+    "info": 4,
+    "news": 3,
+    "document": 3,
+    "blog": 2,
+    "promo": 2,
+    "calculator": 1,
+    "listing": 0,
+    "expired": -1,
+}
 
-_INFO_PREFIXES = ("/about", "/contact", "/membership", "/careers", "/disclosures", "/privacy",
-                  "/digital-privacy-policy", "/community", "/scholarships", "/not-for-sale",
-                  "/financial-services", "/foundation", "/thankuse", "/subscription-preferences",
-                  "/photo-release-form", "/manage-account-alerts")
-_PRODUCT_PREFIXES = ("/personal", "/business", "/savings", "/checking", "/loans", "/personal-loans",
-                     "/savings-account", "/online-and-mobile-banking", "/connect", "/shine",
-                     "/brighttrack", "/mobile", "/protection", "/homebuying-guidance",
-                     "/mortgage-refi", "/first-time-homebuyer-grant", "/hardship-grant",
-                     "/gift-of-innovation-grant", "/non-profit-grant", "/kccc", "/earn-more")
-_PROMO_HINTS = ("-lp", "/switch-and-earn", "/money-makeover", "/sprint-to-savings-challenge",
-                "/21-day-sprint-to-savings-challenge", "/offer-expired")
+_INFO_PREFIXES = (
+    "/about",
+    "/contact",
+    "/membership",
+    "/careers",
+    "/disclosures",
+    "/privacy",
+    "/digital-privacy-policy",
+    "/community",
+    "/scholarships",
+    "/not-for-sale",
+    "/financial-services",
+    "/foundation",
+    "/thankuse",
+    "/subscription-preferences",
+    "/photo-release-form",
+    "/manage-account-alerts",
+)
+_PRODUCT_PREFIXES = (
+    "/personal",
+    "/business",
+    "/savings",
+    "/checking",
+    "/loans",
+    "/personal-loans",
+    "/savings-account",
+    "/online-and-mobile-banking",
+    "/connect",
+    "/shine",
+    "/brighttrack",
+    "/mobile",
+    "/protection",
+    "/homebuying-guidance",
+    "/mortgage-refi",
+    "/first-time-homebuyer-grant",
+    "/hardship-grant",
+    "/gift-of-innovation-grant",
+    "/non-profit-grant",
+    "/kccc",
+    "/earn-more",
+)
+_PROMO_HINTS = (
+    "-lp",
+    "/switch-and-earn",
+    "/money-makeover",
+    "/sprint-to-savings-challenge",
+    "/21-day-sprint-to-savings-challenge",
+    "/offer-expired",
+)
 _ARTICLE_TAIL = re.compile(
     r"^#{1,6}\s*(handpicked for you|recent news|related (articles|posts|stories)|"
-    r"you may also (like|want to consider)|more (news|stories))\b.*$", re.I | re.M)
+    r"you may also (like|want to consider)|more (news|stories))\b.*$",
+    re.I | re.M,
+)
 
 
 def url_path(url: str) -> str:
@@ -66,14 +124,20 @@ def classify(url: str, title: str, text: str) -> str:
         return "calculator"
     if path.startswith("/hubfs"):
         return "document"
-    if path in ("/newsroom", "/resources", "/resources/dupaco-news", "/learn", "/learn/blog") or \
-            "/tag/" in path or "/author/" in path or \
-            ("load more" in text[-3000:].lower() and "#### filter" in text.lower()):
+    if (
+        path in ("/newsroom", "/resources", "/resources/dupaco-news", "/learn", "/learn/blog")
+        or "/tag/" in path
+        or "/author/" in path
+        or ("load more" in text[-3000:].lower() and "#### filter" in text.lower())
+    ):
         return "listing"
     if path.startswith("/newsroom"):
         return "news"
-    if path.startswith(("/learn", "/business/resources/", "/dupacodaily", "/resources/")) or \
-            re.match(r"^/\d{4}/", path) or path.startswith("/covid-19"):
+    if (
+        path.startswith(("/learn", "/business/resources/", "/dupacodaily", "/resources/"))
+        or re.match(r"^/\d{4}/", path)
+        or path.startswith("/covid-19")
+    ):
         return "blog"
     if any(h in path for h in _PROMO_HINTS):
         return "promo"
@@ -84,7 +148,7 @@ def classify(url: str, title: str, text: str) -> str:
     return "info"
 
 
-def published_date(url: str, kind: str, text: str) -> Optional[date]:
+def published_date(url: str, kind: str, text: str) -> date | None:
     """Date in an old-style URL (/2018/09/25/) or the byline date at the top of the article."""
     m = re.search(r"/(20\d{2}|19\d{2})/(\d{2})/(\d{2})/", url)
     if m:
@@ -107,14 +171,14 @@ def drop_teaser_sections(text: str) -> str:
         m = _ARTICLE_TAIL.search(text)
         if not m:
             return text
-        nxt = re.search(r"^#{1,2}\s+\S", text[m.end():], re.M)
+        nxt = re.search(r"^#{1,2}\s+\S", text[m.end() :], re.M)
         end = m.end() + nxt.start() if nxt else len(text)
-        text = (text[:m.start()].rstrip() + "\n\n" + text[end:]).strip()
+        text = (text[: m.start()].rstrip() + "\n\n" + text[end:]).strip()
 
 
 @dataclass
 class Block:
-    kind: str                 # 'h' | 'p' | 'table'
+    kind: str  # 'h' | 'p' | 'table'
     text: str
     level: int = 0
 
@@ -127,7 +191,7 @@ class RawChunk:
     caption: str = ""
     table: str = ""
     effective: list = field(default_factory=list)
-    context: str = ""                    # text just before a table (for product detection)
+    context: str = ""  # text just before a table (for product detection)
 
 
 def split_blocks(text: str) -> list[Block]:
@@ -175,9 +239,12 @@ def _is_caption(b: Block) -> bool:
     if b.kind != "p" or "\n" in t or len(t) > 90:
         return False
     if t.startswith("- ") and "[" not in t and len(t) < 60:
-        return True                     # tab label, e.g. "- Term-Share Certificate Rates"
-    return (not t.startswith(("[", "-", "*", "_")) and not t.endswith((".", ":", "?", "!"))
-            and not re.match(r"^\d+([A-Z\s.]|$)", t))
+        return True  # tab label, e.g. "- Term-Share Certificate Rates"
+    return (
+        not t.startswith(("[", "-", "*", "_"))
+        and not t.endswith((".", ":", "?", "!"))
+        and not re.match(r"^\d+([A-Z\s.]|$)", t)
+    )
 
 
 def _real_table(table: str) -> bool:
@@ -232,7 +299,7 @@ def chunk_page(text: str) -> list[RawChunk]:
             i += 1
             continue
         if b.kind == "p" and i in caption_of:
-            i += 1          # consumed by its table below
+            i += 1  # consumed by its table below
             continue
         if b.kind == "p":
             if sum(len(p) for p in prose) + len(b.text) > MAX_PROSE and prose:
@@ -249,8 +316,12 @@ def chunk_page(text: str) -> list[RawChunk]:
         caps = [blocks[k].text for k in sorted(caption_of) if caption_of[k] == i]
         foot: list[str] = []
         j = i + 1
-        while j < len(blocks) and blocks[j].kind == "p" and j not in caption_of and \
-                sum(len(x) for x in foot) < MAX_FOOTNOTES:
+        while (
+            j < len(blocks)
+            and blocks[j].kind == "p"
+            and j not in caption_of
+            and sum(len(x) for x in foot) < MAX_FOOTNOTES
+        ):
             foot.append(blocks[j].text)
             j += 1
         body = "\n".join(caps + [b.text] + foot)
@@ -260,16 +331,23 @@ def chunk_page(text: str) -> list[RawChunk]:
         shorts = [x.text for x in prev if len(x.text) <= 80 or x.kind == "h"]
         near = prev[-1].text[:200] if prev else ""
         context = " ".join([heading()] + shorts + [near])[-600:]
-        chunks.append(RawChunk(heading(), body, is_table=True,
-                               caption=" / ".join(c.lstrip("- ").strip() for c in caps),
-                               table=b.text, effective=effective_dates("\n".join(foot)),
-                               context=context))
+        chunks.append(
+            RawChunk(
+                heading(),
+                body,
+                is_table=True,
+                caption=" / ".join(c.lstrip("- ").strip() for c in caps),
+                table=b.text,
+                effective=effective_dates("\n".join(foot)),
+                context=context,
+            )
+        )
         i = j
     emit_prose()
     return chunks
 
 
-def prepare_page(url: str, title: str, markdown: str) -> tuple[str, str, Optional[date], str]:
+def prepare_page(url: str, title: str, markdown: str) -> tuple[str, str, date | None, str]:
     """Return (kind, cleaned_text, published_date, title)."""
     text = clean_markdown(markdown)
     kind = classify(url, title, text)

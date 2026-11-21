@@ -1,19 +1,29 @@
 """Text helpers: cleaning the crawler's markdown, tokenizing, numbers and dates."""
+
 from __future__ import annotations
 
 import re
 from datetime import date, timedelta
-from typing import Optional
-from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _FLAG = re.compile(r"[\U0001F1E6-\U0001F1FF]")
-_PAREN_URL = r"((?:[^()\s]|\([^()\s]*\))*)"          # URL allowing one level of (...)
+_PAREN_URL = r"((?:[^()\s]|\([^()\s]*\))*)"  # URL allowing one level of (...)
 _DATA_IMG = re.compile(r"!\[[^\]]*\]\(data:[^)]*\)")
 _IMG = re.compile(r"!\[[^\]]*\]\(" + _PAREN_URL + r"(?:\s+\"[^\"]*\")?\)")
 _LINK = re.compile(r"\[([^\]]*)\]\(" + _PAREN_URL + r"(?:\s+\"[^\"]*\")?\)")
 _ESCAPED = re.compile(r"\\([*#_\[\]()$.!+\-`>|])")
-_TRACKING_PARAMS = {"hslang", "utm_source", "utm_medium", "utm_campaign", "utm_content",
-                    "utm_term", "hsctatracking", "_hsenc", "_hsmi", "redirect"}
+_TRACKING_PARAMS = {
+    "hslang",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_content",
+    "utm_term",
+    "hsctatracking",
+    "_hsenc",
+    "_hsmi",
+    "redirect",
+}
 _MODAL_LINES = (
     "heads up! this link leads to a different website",
     "we only do this when it's helpful for you",
@@ -28,8 +38,11 @@ def normalize_url(url: str) -> str:
     except ValueError:
         return url
     if parts.query:
-        kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
-                if k.lower() not in _TRACKING_PARAMS]
+        kept = [
+            (k, v)
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k.lower() not in _TRACKING_PARAMS
+        ]
         parts = parts._replace(query=urlencode(kept))
     return urlunsplit(parts)
 
@@ -48,26 +61,28 @@ def _link_sub(m: re.Match) -> str:
 def clean_markdown(md: str) -> str:
     """Strip images, tracking params, modal boilerplate and form widgets; keep links and tables."""
     md = md.replace("\r\n", "\n")
-    md = re.sub(r"(?:\\+r)?\\+n", "\n", md)          # CMS text with literal "\r\n" escapes
-    md = re.sub(r"\\{1,2}\n", "\n", md)                 # markdown hard breaks "\\\n"
+    md = re.sub(r"(?:\\+r)?\\+n", "\n", md)  # CMS text with literal "\r\n" escapes
+    md = re.sub(r"\\{1,2}\n", "\n", md)  # markdown hard breaks "\\\n"
     md = _DATA_IMG.sub("", md)
     md = _IMG.sub("", md)
     md = _LINK.sub(_link_sub, md)
-    md = _LINK.sub(_link_sub, md)                        # nested [![..](..)](..) leftovers
+    md = _LINK.sub(_link_sub, md)  # nested [![..](..)](..) leftovers
     md = _ESCAPED.sub(r"\1", md)
     md = md.replace("\u00a0", " ").replace("\u200b", "")
     out = []
     for line in md.split("\n"):
         s = line.rstrip()
         st = s.strip()
-        if _FLAG.search(s):                              # country-code pickers in forms
+        if _FLAG.search(s):  # country-code pickers in forms
             continue
         low = st.lower()
-        if st in ("✕", "* * *", "---", "Cancel", "Continue Cancel", "Previous", "Next") or \
-                low.startswith(_MODAL_LINES):
+        if st in ("✕", "* * *", "---", "Cancel", "Continue Cancel", "Previous", "Next") or low.startswith(
+            _MODAL_LINES
+        ):
             continue
-        if low.startswith("but we must inform you that dupaco isn't responsible") or \
-           low.startswith("but we must inform you that dupaco isn’t responsible"):
+        if low.startswith("but we must inform you that dupaco isn't responsible") or low.startswith(
+            "but we must inform you that dupaco isn’t responsible"
+        ):
             continue
         if re.fullmatch(r"\[continue\]\([^)]*\)\s*cancel", low):
             continue
@@ -89,13 +104,58 @@ def clean_markdown(md: str) -> str:
     return text.strip()
 
 
-_STATES = {"alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut",
-           "delaware", "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas",
-           "kentucky", "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota",
-           "mississippi", "missouri", "montana", "nebraska", "nevada", "new hampshire", "new jersey",
-           "new mexico", "new york", "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
-           "pennsylvania", "rhode island", "south carolina", "south dakota", "tennessee", "texas", "utah",
-           "vermont", "virginia", "washington", "west virginia", "wisconsin", "wyoming"}
+_STATES = {
+    "alabama",
+    "alaska",
+    "arizona",
+    "arkansas",
+    "california",
+    "colorado",
+    "connecticut",
+    "delaware",
+    "florida",
+    "georgia",
+    "hawaii",
+    "idaho",
+    "illinois",
+    "indiana",
+    "iowa",
+    "kansas",
+    "kentucky",
+    "louisiana",
+    "maine",
+    "maryland",
+    "massachusetts",
+    "michigan",
+    "minnesota",
+    "mississippi",
+    "missouri",
+    "montana",
+    "nebraska",
+    "nevada",
+    "new hampshire",
+    "new jersey",
+    "new mexico",
+    "new york",
+    "north carolina",
+    "north dakota",
+    "ohio",
+    "oklahoma",
+    "oregon",
+    "pennsylvania",
+    "rhode island",
+    "south carolina",
+    "south dakota",
+    "tennessee",
+    "texas",
+    "utah",
+    "vermont",
+    "virginia",
+    "washington",
+    "west virginia",
+    "wisconsin",
+    "wyoming",
+}
 
 
 def _drop_state_pickers(text: str) -> str:
@@ -113,24 +173,94 @@ def _drop_state_pickers(text: str) -> str:
     return "\n".join(keep[:-1])
 
 
+_ABBREV = {
+    "ext.",
+    "e.g.",
+    "i.e.",
+    "a.m.",
+    "p.m.",
+    "st.",
+    "ave.",
+    "dr.",
+    "rd.",
+    "ln.",
+    "blvd.",
+    "no.",
+    "vs.",
+    "mr.",
+    "mrs.",
+    "ms.",
+    "inc.",
+    "co.",
+    "jan.",
+    "feb.",
+    "aug.",
+    "sept.",
+    "oct.",
+    "nov.",
+    "dec.",
+    "u.s.",
+    "wis.",
+    "ill.",
+    "approx.",
+}
+
+
+def split_sentences(text: str) -> list[str]:
+    """Sentence split that doesn't break on "ext.", "St.", "a.m." and similar."""
+    out = []
+    for block in re.split(r"\n+", text):
+        buf = ""
+        for part in re.split(r"(?<=[.!?])\s+", block):
+            buf = f"{buf} {part}" if buf else part
+            last = buf.rsplit(None, 1)[-1].lower() if buf.strip() else ""
+            if last in _ABBREV or re.fullmatch(r"[a-z]\.", last):
+                continue
+            out.append(buf.strip())
+            buf = ""
+        if buf.strip():
+            out.append(buf.strip())
+    return out
+
+
 def strip_links(text: str) -> str:
     """Links -> anchor text (for the search index)."""
     return _LINK.sub(lambda m: m.group(1) or m.group(2), text)
 
 
 _TOKEN = re.compile(r"\$?\d+(?:[.,]\d+)*%?|[a-z][a-z0-9'’]*")
-STOPWORDS = frozenset("""
+STOPWORDS = frozenset(
+    """
 a an and are as at be by can could do does for from had has have how i if in into is it its
 me my of on or our so than that the their them then there these this those to too us was we
 were what when where which who whom why will with would you your yours dupaco dupaco's
 please tell give get let know want like need just also any some much many about
-""".split())
-_IRREGULAR = {"rates": "rate", "loans": "loan", "months": "month", "years": "year",
-              "certificates": "certificate", "accounts": "account", "branches": "branch",
-              "hours": "hour", "savings": "savings", "taxes": "tax", "fees": "fee",
-              "cds": "cd", "iras": "ira", "atms": "atm", "cards": "card", "terms": "term",
-              "options": "option", "employees": "employee", "members": "member",
-              "businesses": "business", "lives": "life", "mortgages": "mortgage"}
+""".split()
+)
+_IRREGULAR = {
+    "rates": "rate",
+    "loans": "loan",
+    "months": "month",
+    "years": "year",
+    "certificates": "certificate",
+    "accounts": "account",
+    "branches": "branch",
+    "hours": "hour",
+    "savings": "savings",
+    "taxes": "tax",
+    "fees": "fee",
+    "cds": "cd",
+    "iras": "ira",
+    "atms": "atm",
+    "cards": "card",
+    "terms": "term",
+    "options": "option",
+    "employees": "employee",
+    "members": "member",
+    "businesses": "business",
+    "lives": "life",
+    "mortgages": "mortgage",
+}
 
 
 def stem(tok: str) -> str:
@@ -192,20 +322,53 @@ def norm_label(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-MONTHS = {m: i for i, m in enumerate(
-    ["january", "february", "march", "april", "may", "june", "july", "august",
-     "september", "october", "november", "december"], 1)}
-MONTHS.update({"jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8,
-               "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12})
-_MONTH_RE = (r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
-             r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)")
+MONTHS = {
+    m: i
+    for i, m in enumerate(
+        [
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+        ],
+        1,
+    )
+}
+MONTHS.update(
+    {
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "sept": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
+    }
+)
+_MONTH_RE = (
+    r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
+    r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+)
 LONG_DATE = re.compile(_MONTH_RE + r"\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})", re.I)
 MONTH_YEAR = re.compile(_MONTH_RE + r"\.?,?\s+(\d{4})", re.I)
 NUM_DATE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b")
-ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})(?!\d)")  # also inside "2026-05-31T12:00Z"
 
 
-def safe_date(y: int, m: int, d: int) -> Optional[date]:
+def safe_date(y: int, m: int, d: int) -> date | None:
     try:
         return date(y, m, d)
     except ValueError:
@@ -217,14 +380,26 @@ def month_end(y: int, m: int) -> date:
     return nxt - timedelta(days=1)
 
 
-def parse_iso(s: Optional[str]) -> Optional[date]:
+def parse_iso(s: str | None) -> date | None:
     if not s:
         return None
     m = ISO_DATE.search(str(s))
     return safe_date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
 
 
-def parse_num_date(s: str) -> Optional[date]:
+def parse_date_loose(s: str | None) -> date | None:
+    """ISO first, then "June 9, 2026", "6/9/2026" or "May 2026" (end of that month)."""
+    if not s:
+        return None
+    d = parse_iso(s) or parse_long_date(s) or parse_num_date(s)
+    if d:
+        return d
+    m = MONTH_YEAR.search(s)
+    mo = month_num(m.group(1)) if m else None
+    return month_end(int(m.group(2)), mo) if mo else None
+
+
+def parse_num_date(s: str) -> date | None:
     m = NUM_DATE.search(s or "")
     if not m:
         return None
@@ -234,11 +409,11 @@ def parse_num_date(s: str) -> Optional[date]:
     return safe_date(y, mo, d)
 
 
-def month_num(name: str) -> Optional[int]:
+def month_num(name: str) -> int | None:
     return MONTHS.get(name.lower().rstrip("."))
 
 
-def parse_long_date(s: str) -> Optional[date]:
+def parse_long_date(s: str) -> date | None:
     m = LONG_DATE.search(s or "")
     if not m:
         return None
@@ -258,5 +433,5 @@ def effective_dates(text: str) -> list[date]:
     return out
 
 
-def fmt_date(d: Optional[date]) -> str:
+def fmt_date(d: date | None) -> str:
     return d.strftime("%b %d, %Y").replace(" 0", " ") if d else "unknown"

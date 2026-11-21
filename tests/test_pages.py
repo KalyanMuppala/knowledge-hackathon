@@ -9,7 +9,10 @@ def test_classify():
     assert classify("https://www.dupaco.com/rates", "Rates", "") == "rates"
     assert classify("https://www.dupaco.com/calculators/vehicle-affordability", "", "") == "calculator"
     assert classify("https://www.dupaco.com/newsroom/forbes-ranks-dupaco", "", "") == "news"
-    assert classify("https://www.dupaco.com/makethemost-lp", "Oops ... This Offer Has Expired | Dupaco", "") == "expired"
+    assert (
+        classify("https://www.dupaco.com/makethemost-lp", "Oops ... This Offer Has Expired | Dupaco", "")
+        == "expired"
+    )
     assert classify("https://www.dupaco.com/switch-and-earn", "", "") == "promo"
 
 
@@ -17,13 +20,18 @@ def test_dates():
     text = "2 min read\n[Emily](x)\nJune 18, 2024\n# Forbes ranks Dupaco"
     assert published_date("https://www.dupaco.com/newsroom/x", "news", text) == date(2024, 6, 18)
     assert published_date("https://www.dupaco.com/2018/09/25/deductibles/", "blog", "") == date(2018, 9, 25)
-    assert effective_dates("Rates are effective as of 08/31/2026. Rates effective 1/1/26") == \
-        [date(2026, 8, 31), date(2026, 1, 1)]
+    assert effective_dates("Rates are effective as of 08/31/2026. Rates effective 1/1/26") == [
+        date(2026, 8, 31),
+        date(2026, 1, 1),
+    ]
 
 
 def test_cleaning():
-    md = ("Intro ![](data:image/svg+xml,abc)\n\n- 🇺🇸 United States +1\n\nwithout notice.\\\\r\\\\n\\\\r\\\\nSavings Rates"
-          "\n\n[Compare rates](https://www.dupaco.com/x?hsLang=en)")
+    md = (
+        "Intro ![](data:image/svg+xml,abc)\n\n- 🇺🇸 United States +1\n\n"
+        "without notice.\\\\r\\\\n\\\\r\\\\nSavings Rates"
+        "\n\n[Compare rates](https://www.dupaco.com/x?hsLang=en)"
+    )
     out = clean_markdown(md)
     assert "data:image" not in out and "United States" not in out
     assert "\\r" not in out and "Savings Rates" in out
@@ -37,8 +45,10 @@ def test_teasers_removed():
 
 
 def test_table_chunk_keeps_caption_and_effective_date():
-    text = ("Special Certificates\n\n| Certificate | APY |\n| --- | --- |\n| 10 Month | 3.90% |\n\n"
-            "Rates are effective as of 09/01/2026.")
+    text = (
+        "Special Certificates\n\n| Certificate | APY |\n| --- | --- |\n| 10 Month | 3.90% |\n\n"
+        "Rates are effective as of 09/01/2026."
+    )
     tables = [c for c in chunk_page(text) if c.is_table]
     assert tables[0].caption == "Special Certificates"
     assert tables[0].effective == [date(2026, 9, 1)]

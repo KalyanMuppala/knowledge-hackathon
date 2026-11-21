@@ -1,4 +1,5 @@
 """Print what conflicts() returns.   python tools/dev_conflicts.py [-v]"""
+
 import sys
 
 from dev_load import build_system

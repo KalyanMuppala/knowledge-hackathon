@@ -1,4 +1,5 @@
 """End-to-end on the harness' self-test fixture (no private data needed)."""
+
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,9 @@ SELFTEST = ROOT / "harness" / "selftest"
 
 @pytest.fixture(scope="module")
 def ks():
-    from run_eval import load_snapshots
     import solution
+    from run_eval import load_snapshots
+
     system = solution.build()
     for snap in load_snapshots(SELFTEST / "snapshots"):
         system.ingest(snap)

@@ -1,4 +1,5 @@
 """Load the snapshots through the harness loader (shared by the other dev scripts)."""
+
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ def load(snap_dir=ROOT / "snapshots"):
 
 def build_system():
     import solution
+
     ks = solution.build()
     for snap in load():
         ks.ingest(snap)

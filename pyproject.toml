@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+extend-exclude = ["harness", "starter", "eval", "snapshots"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E731", "B905", "UP006", "UP007", "UP035"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

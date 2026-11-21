@@ -1,53 +1,119 @@
 """BM25 over chunks, limited to one snapshot and weighted by page trust
 (rate sheet > product page > blog > calculator) and article age."""
+
 from __future__ import annotations
 
 import math
 import re
 from collections import Counter, defaultdict
 from datetime import date
-from typing import Callable, Iterable, Optional
+from typing import Callable, Iterable
 
 from .store import ChunkRec, Store
 from .textutil import tokenize
 
 # how members ask -> how the site words it (added to the query at a lower weight)
 SYNONYMS: dict[str, list[str]] = {
-    "cd": ["certificate"], "cds": ["certificate"], "certificate": ["certificate"],
+    "cd": ["certificate"],
+    "cds": ["certificate"],
+    "certificate": ["certificate"],
     "mortgage": ["home", "loan", "fixed", "conventional", "purchase"],
     "heloc": ["home", "equity", "line", "credit"],
-    "car": ["auto", "vehicle"], "vehicle": ["auto"], "truck": ["auto", "vehicle"],
-    "auto": ["vehicle", "model"], "motorcycle": ["auto"],
+    "car": ["auto", "vehicle"],
+    "vehicle": ["auto"],
+    "truck": ["auto", "vehicle"],
+    "auto": ["vehicle", "model"],
+    "motorcycle": ["auto"],
     "interest": ["rate", "apr", "apy", "dividend"],
-    "yield": ["apy"], "apy": ["dividend", "rate"], "apr": ["rate"],
-    "card": ["visa", "credit"], "visa": ["card"],
+    "yield": ["apy"],
+    "apy": ["dividend", "rate"],
+    "apr": ["rate"],
+    "card": ["visa", "credit"],
+    "visa": ["card"],
     "routing": ["routing", "number", "aba"],
     "atm": ["atm", "locator", "location"],
-    "hour": ["lobby", "drive-up", "open"], "lobby": ["hour"], "drive-up": ["hour"],
-    "open": ["hour"], "branch": ["location", "office"],
-    "location": ["branch"], "address": ["branch", "location"],
-    "join": ["membership", "member", "become"], "eligible": ["membership", "join", "county"],
-    "eligibility": ["membership", "join", "county"], "membership": ["join", "member"],
-    "phone": ["call", "contact"], "contact": ["call", "phone"],
-    "boat": ["rv", "recreational"], "rv": ["boat", "recreational"],
-    "atv": ["snowmobile", "recreational"], "snowmobile": ["atv"],
-    "ira": ["roth", "traditional", "retirement"], "retirement": ["ira"],
-    "jumbo": ["jumbo"], "special": ["special"],
-    "checking": ["checking"], "savings": ["share", "savings"],
-    "student": ["student", "loan"], "wallet": ["apple", "google", "samsung", "pay"],
-    "link": ["url", "page"], "url": ["link", "page"], "website": ["page", "online"],
-    "employee": ["employee", "staff"], "volunteer": ["volunteer", "vto"],
-    "fee": ["fee", "charge"], "overdraft": ["overdraft", "nsf"],
+    "hour": ["lobby", "drive-up", "open"],
+    "lobby": ["hour"],
+    "drive-up": ["hour"],
+    "open": ["hour"],
+    "branch": ["location", "office"],
+    "location": ["branch"],
+    "address": ["branch", "location"],
+    "join": ["membership", "member", "become"],
+    "eligible": ["membership", "join", "county"],
+    "eligibility": ["membership", "join", "county"],
+    "membership": ["join", "member"],
+    "phone": ["call", "contact"],
+    "contact": ["call", "phone"],
+    "boat": ["rv", "recreational"],
+    "rv": ["boat", "recreational"],
+    "atv": ["snowmobile", "recreational"],
+    "snowmobile": ["atv"],
+    "ira": ["roth", "traditional", "retirement"],
+    "retirement": ["ira"],
+    "jumbo": ["jumbo"],
+    "special": ["special"],
+    "checking": ["checking"],
+    "savings": ["share", "savings"],
+    "student": ["student", "loan"],
+    "wallet": ["apple", "google", "samsung", "pay"],
+    "link": ["url", "page"],
+    "url": ["link", "page"],
+    "website": ["page", "online"],
+    "employee": ["employee", "staff"],
+    "volunteer": ["volunteer", "vto"],
+    "fee": ["fee", "charge"],
+    "overdraft": ["overdraft", "nsf"],
 }
 
-_DOMAIN_STOP = frozenset({"rate", "dupaco", "credit", "union", "current", "currently", "today",
-                          "now", "right", "offer", "website"})
+_DOMAIN_STOP = frozenset(
+    {"rate", "dupaco", "credit", "union", "current", "currently", "today", "now", "right", "offer", "website"}
+)
 # generic verbs/fillers that carry little topical signal in a member question
-_WEAK = frozenset({"received", "receive", "recognition", "available", "provide", "offered",
-                   "use", "used", "using", "find", "see", "show", "list", "explain", "mean",
-                   "work", "help", "make", "take", "keep", "go", "still", "say", "said", "kind",
-                   "type", "different", "same", "all", "every", "general", "anything", "something",
-                   "information", "info", "detail", "details", "again", "repeat", "thing"})
+_WEAK = frozenset(
+    {
+        "received",
+        "receive",
+        "recognition",
+        "available",
+        "provide",
+        "offered",
+        "use",
+        "used",
+        "using",
+        "find",
+        "see",
+        "show",
+        "list",
+        "explain",
+        "mean",
+        "work",
+        "help",
+        "make",
+        "take",
+        "keep",
+        "go",
+        "still",
+        "say",
+        "said",
+        "kind",
+        "type",
+        "different",
+        "same",
+        "all",
+        "every",
+        "general",
+        "anything",
+        "something",
+        "information",
+        "info",
+        "detail",
+        "details",
+        "again",
+        "repeat",
+        "thing",
+    }
+)
 
 
 def entity_tokens(question: str) -> set[str]:
@@ -55,8 +121,23 @@ def entity_tokens(question: str) -> set[str]:
     out = set()
     for m in re.finditer(r"(?<![.?!]\s)(?<!^)\b([A-Z][a-zA-Z$-]{2,})", question):
         w = m.group(1)
-        if w.lower() in ("dupaco", "what", "how", "when", "where", "which", "who", "can", "does",
-                         "i", "apy", "apr", "ira", "cd", "visa"):
+        if w.lower() in (
+            "dupaco",
+            "what",
+            "how",
+            "when",
+            "where",
+            "which",
+            "who",
+            "can",
+            "does",
+            "i",
+            "apy",
+            "apr",
+            "ira",
+            "cd",
+            "visa",
+        ):
             continue
         out.update(tokenize(w))
     return out
@@ -97,11 +178,9 @@ class BM25:
     def finalize(self) -> None:
         n = max(1, len(self.doc_len))
         self.avgdl = sum(self.doc_len.values()) / n
-        self.idf = {t: math.log(1 + (n - len(p) + 0.5) / (len(p) + 0.5))
-                    for t, p in self.postings.items()}
+        self.idf = {t: math.log(1 + (n - len(p) + 0.5) / (len(p) + 0.5)) for t, p in self.postings.items()}
 
-    def scores(self, query: Iterable[tuple[str, float]],
-               allow: Callable[[int], bool]) -> dict[int, float]:
+    def scores(self, query: Iterable[tuple[str, float]], allow: Callable[[int], bool]) -> dict[int, float]:
         """BM25 with a coverage factor, so a chunk matching most of the query beats one
         that repeats a single term ("received" x 10)."""
         out: dict[int, float] = defaultdict(float)
@@ -126,7 +205,7 @@ class BM25:
         return out
 
 
-def recency_factor(published: Optional[date], view_date: date) -> float:
+def recency_factor(published: date | None, view_date: date) -> float:
     """Older articles slowly lose weight, so on identical boilerplate the newest wins."""
     if not published:
         return 1.0
@@ -149,16 +228,22 @@ class Searcher:
         self.store = store
         self.bm25 = BM25()
         self._indexed = 0
-        self.stale_chunks: dict[int, set[int]] = {}    # snap -> chunk ids with superseded facts
+        self.stale_chunks: dict[int, set[int]] = {}  # snap -> chunk ids with superseded facts
 
     def refresh(self) -> None:
-        for ch in self.store.chunks[self._indexed:]:
+        for ch in self.store.chunks[self._indexed :]:
             self.bm25.add(ch.cid, ch.tokens)
         self._indexed = len(self.store.chunks)
         self.bm25.finalize()
 
-    def search(self, question: str, snap: int, k: int = 8, per_url: int = 2,
-               kinds_boost: Optional[dict[str, float]] = None) -> list[tuple[ChunkRec, float]]:
+    def search(
+        self,
+        question: str,
+        snap: int,
+        k: int = 8,
+        per_url: int = 2,
+        kinds_boost: dict[str, float] | None = None,
+    ) -> list[tuple[ChunkRec, float]]:
         store = self.store
         view_date = store.snapshots[snap].taken_on
         query = expand_query(question)
@@ -174,7 +259,7 @@ class Searcher:
             if cid in stale:
                 w *= 0.45
             if cid in carried:
-                w *= 0.5                 # page no longer seen in this capture
+                w *= 0.5  # page no longer seen in this capture
             scored.append((s * w, cid))
         scored.sort(reverse=True)
         out, per = [], Counter()

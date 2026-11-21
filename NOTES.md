@@ -38,6 +38,9 @@ article age. Then:
   That's 24 of the 40 public questions. The rate lookup understands tiers: terms ("five-year",
   "84 months"), balances and loan amounts ("$90k" picks the tightest "$X or less" bracket),
   model years ("a new car" is the newest tier), jumbo vs non-jumbo, purchase vs refinance.
+- Yes/no questions about a value ("do any savings tiers pay 0.35%?") are checked against the
+  rows ("No. The highest is Share Savings ($25,000+) at 0.20% APY."), and "what savings
+  accounts do you offer?" lists the products that currently have a rate table.
 - Hours come from the schedules printed in branch press releases (typical schedule plus the
   variations). A question about a named branch with no published hours gets "I don't know"
   rather than another branch's hours.
@@ -92,9 +95,9 @@ answers take well under a tenth of a second.
 
 | set | questions | accuracy | stale-value hits | p95 latency |
 |---|---|---|---|---|
-| `eval/public_eval.jsonl` | 40 | 0.938 | 0 | 0.09 s |
-| `tools/dev_eval.jsonl` (my held-out questions) | 46 | 1.00 | 0 | 0.09 s |
-| `tools/dev_eval2.jsonl` (second held-out batch) | 25 | 1.00 | 0 | 0.09 s |
+| `eval/public_eval.jsonl` | 40 | 0.938 | 0 | 0.10 s |
+| `tools/dev_eval.jsonl` (my held-out questions) | 46 | 1.00 | 0 | 0.10 s |
+| `tools/dev_eval2.jsonl` (second held-out batch) | 25 | 1.00 | 0 | 0.10 s |
 | `harness/selftest` (+ conflicts gold) | 5 | 1.00, conflicts F1 1.00 | 0 | - |
 
 Paraphrase and repeat consistency are both 1.0 on the public set.
@@ -104,8 +107,10 @@ the scorer's optional judge is on; `dup-081` (who can join) needs the charter ar
 states combined from two different pages, which sentence extraction doesn't do. The two
 held-out files are questions I wrote against the snapshots (paraphrases, other products and
 tiers, as-of dates, history and refusals) to check the rules weren't just fitted to the
-public set. `tests/` has unit tests for parsing, classification and dates, plus an end-to-end
-run on the self-test fixture (`pytest tests`).
+public set. `tests/` covers parsing, classification and dates, the self-test fixture end to
+end, and a small made-up two-crawl site that exercises tier matching, stale pages, as-of,
+value checks and refusals without needing the real snapshots (`pytest`). Formatting and
+linting use ruff (`pyproject.toml`).
 
 ## Limitations / next steps
 

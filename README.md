@@ -24,7 +24,7 @@ Tests don't need the snapshots:
 
 ```bash
 pip install pytest
-pytest tests
+pytest
 ```
 
 ## Layout

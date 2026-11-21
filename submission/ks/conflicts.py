@@ -11,16 +11,17 @@ Who wins, in order (see NOTES.md):
   3. same kind of page: the later "Rates are effective as of" date wins
   4. boilerplate in articles: the most recently published article wins
 """
+
 from __future__ import annotations
 
 import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
 
 from .pages import KIND_RANK, url_path
 from .store import FactObs, Store
+from .tables import proper, tier_text
 from .textutil import fmt_date
 
 PRIMARY_METRIC = {"APY": 0, "APR": 0, "rate": 1, "dividend rate": 1}
@@ -28,8 +29,12 @@ PRIMARY_METRIC = {"APY": 0, "APR": 0, "rate": 1, "dividend rate": 1}
 
 def obs_rank(o: FactObs) -> tuple:
     path = url_path(o.url)
-    return (KIND_RANK.get(o.kind, 0), o.fact.effective or date.min,
-            path in ("/rates", "/business-rates"), -len(path))
+    return (
+        KIND_RANK.get(o.kind, 0),
+        o.fact.effective or date.min,
+        path in ("/rates", "/business-rates"),
+        -len(path),
+    )
 
 
 @dataclass
@@ -43,35 +48,69 @@ class ResolvedFact:
 @dataclass
 class ConflictRec:
     topic: str
-    kind: str                                  # "stale_page" | "changed_over_time" | "narrative" | "sibling"
+    kind: str  # "stale_page" | "changed_over_time" | "narrative" | "sibling"
     values: list[str]
-    sources: list[tuple[str, int, str]]        # (url, snap, quote)
-    resolution: Optional[str]
+    sources: list[tuple[str, int, str]]  # (url, snap, quote)
+    resolution: str | None
     reason: str
     importance: float = 1.0
     product: str = ""
     label: str = ""
 
 
-_ORD = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6, "seventh": 7,
-        "eighth": 8, "ninth": 9, "tenth": 10}
+_ORD = {
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+}
 NARRATIVE_PATTERNS = [
-    ("number of branch office locations", ("branch", "branches", "locations", "offices"),
-     re.compile(r"(\d{1,3}) branch office locations", re.I), "has {} branch office locations"),
-    ("membership size (number of members)", ("members", "membership", "member-owners"),
-     re.compile(r"membership has grown to (?:more than|over|almost|nearly|about) ([\d,]{5,})", re.I),
-     "has more than {} members"),
-    ("total assets", ("assets", "asset", "billion"),
-     re.compile(r"assets (?:exceeding|of more than|of nearly|of almost|of) \$([\d.]+) billion", re.I),
-     "has assets exceeding ${} billion"),
-    ("number of employees", ("employees", "employee", "staff"),
-     re.compile(r"\bIt has (?:over|more than|nearly|almost|about) (\d{3,4}) employees", re.I),
-     "has over {} employees"),
-    ("number of counties served", ("counties", "county"),
-     re.compile(r"serves residents in (\d{2,3}) counties", re.I), "serves residents in {} counties"),
-    ("Forbes recognition count", ("forbes",),
-     re.compile(r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth) time Forbes "
-                r"(?:has )?(?:recognized|named|ranked)", re.I), "the {} time Forbes recognized Dupaco"),
+    (
+        "number of branch office locations",
+        ("branch", "branches", "locations", "offices"),
+        re.compile(r"(\d{1,3}) branch office locations", re.I),
+        "has {} branch office locations",
+    ),
+    (
+        "membership size (number of members)",
+        ("members", "membership", "member-owners"),
+        re.compile(r"membership has grown to (?:more than|over|almost|nearly|about) ([\d,]{5,})", re.I),
+        "has more than {} members",
+    ),
+    (
+        "total assets",
+        ("assets", "asset", "billion"),
+        re.compile(r"assets (?:exceeding|of more than|of nearly|of almost|of) \$([\d.]+) billion", re.I),
+        "has assets exceeding ${} billion",
+    ),
+    (
+        "number of employees",
+        ("employees", "employee", "staff"),
+        re.compile(r"\bIt has (?:over|more than|nearly|almost|about) (\d{3,4}) employees", re.I),
+        "has over {} employees",
+    ),
+    (
+        "number of counties served",
+        ("counties", "county"),
+        re.compile(r"serves residents in (\d{2,3}) counties", re.I),
+        "serves residents in {} counties",
+    ),
+    (
+        "Forbes recognition count",
+        ("forbes",),
+        re.compile(
+            r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth) time Forbes "
+            r"(?:has )?(?:recognized|named|ranked)",
+            re.I,
+        ),
+        "the {} time Forbes recognized Dupaco",
+    ),
 ]
 
 
@@ -135,7 +174,8 @@ def _topic(product: str, label: str, metric: str) -> str:
     m = re.search(r"(\d+)\s*-?\s*(month|year)s?", label, re.I)
     term = f"{m.group(1)}-{m.group(2).lower()} " if m else ""
     metric = "rate/APR" if product == "mortgage" else metric
-    return f"{term}{product} {metric} ({label})"
+    detail = tier_text(product, label)
+    return f"{term}{proper(product)} {metric}" + (f" ({detail})" if detail else "")
 
 
 class ConflictEngine:
@@ -168,8 +208,10 @@ class ConflictEngine:
                 for o in lst:
                     if o.fact.value != win.fact.value and o.url != win.url:
                         self.stale_chunks[s].add(o.cid)
-                        note = (f"OUTDATED: this page shows {o.fact.label} {o.fact.metric} = {o.fact.value}; "
-                                f"the official {_short(win.url)} page says {win.fact.value}")
+                        note = (
+                            f"OUTDATED: this page shows {o.fact.label} {o.fact.metric} = {o.fact.value}; "
+                            f"the official {_short(win.url)} page says {win.fact.value}"
+                        )
                         if note not in self.stale_notes[s][o.cid]:
                             self.stale_notes[s][o.cid].append(note)
         self._built_for = len(st.snapshots)
@@ -181,7 +223,7 @@ class ConflictEngine:
         for key in self.by_key:
             groups[(key[0], key[1])].append(key)
         out = []
-        for (product, tier), keys in groups.items():
+        for (product, _tier), keys in groups.items():
             keys.sort(key=lambda k: (PRIMARY_METRIC.get(k[2], 2), k[2]))
             primary = keys[0]
             obs = self.by_key[primary]
@@ -207,8 +249,10 @@ class ConflictEngine:
                 for o in self.by_key[k]:
                     by_page[(o.snap, o.url)][k[2]] = o
             values, sources, seen = [], [], set()
-            for (s, url), bm in sorted(by_page.items(), key=lambda kv: (kv[0][0], -obs_rank(
-                    kv[1].get(primary[2]) or next(iter(kv[1].values())))[0])):
+            for (s, url), bm in sorted(
+                by_page.items(),
+                key=lambda kv: (kv[0][0], -obs_rank(kv[1].get(primary[2]) or next(iter(kv[1].values())))[0]),
+            ):
                 if primary[2] not in bm:
                     continue
                 v = _combo(bm, primary[2])
@@ -218,24 +262,43 @@ class ConflictEngine:
                 values.append(v)
                 o = bm[primary[2]]
                 sources.append((url, s, f"{o.fact.caption or product}, {o.fact.label}: {v}"))
-            metric_vals = {k[2]: self.winners[final.snap][k].value for k in keys
-                           if k in self.winners.get(final.snap, {})}
+            metric_vals = {
+                k[2]: self.winners[final.snap][k].value for k in keys if k in self.winners.get(final.snap, {})
+            }
             resolution = _join_metrics(metric_vals, primary[2])
             reasons = []
             if stale_now:
                 pages = sorted({_short(o.url) for o in stale_now})
+                old_values = ", ".join(sorted({o.fact.value for o in stale_now}))
                 reasons.append(
-                    f"{', '.join(pages)} still print(s) {', '.join(sorted({o.fact.value for o in stale_now}))}"
+                    f"{', '.join(pages)} still print(s) {old_values}"
                     f" ({final.obs.fact.label}); the {_short(final.obs.url)} page is authoritative"
-                    + (f" with rates effective {fmt_date(final.obs.fact.effective)}" if final.obs.fact.effective else ""))
+                    + (
+                        f" with rates effective {fmt_date(final.obs.fact.effective)}"
+                        if final.obs.fact.effective
+                        else ""
+                    )
+                )
             if changed:
                 hist = " -> ".join(f"{v} ({st.snapshots[s].taken_on.isoformat()})" for v, s in history)
-                reasons.append(f"the official value changed between snapshots: {hist}; the newest snapshot is current")
+                reasons.append(
+                    f"the official value changed between snapshots: {hist}; the newest snapshot is current"
+                )
             kind = "stale_page" if stale_now else ("changed_over_time" if changed else "stale_page")
             importance = 1.0 + (1.0 if stale_now else 0.0) + (0.5 if changed else 0.0)
-            out.append(ConflictRec(_topic(product, final.obs.fact.label, primary[2]), kind, values,
-                                   sources, resolution, "; ".join(reasons), importance,
-                                   product, final.obs.fact.label))
+            out.append(
+                ConflictRec(
+                    _topic(product, final.obs.fact.label, primary[2]),
+                    kind,
+                    values,
+                    sources,
+                    resolution,
+                    "; ".join(reasons),
+                    importance,
+                    product,
+                    final.obs.fact.label,
+                )
+            )
         return out
 
     def table_conflicts(self) -> list[ConflictRec]:
@@ -263,19 +326,39 @@ class ConflictEngine:
         for (product, rest), d in pairs.items():
             if len(d) == 2 and d["roth"].value != d["traditional"].value:
                 # break the tie with the matching certificate special
-                cert_vals = [rf.value for k, rf in wins.items()
-                             if k[0] == "certificate special" and k[2] == "APY"
-                             and rest.replace(" special", "") in k[1]]
+                cert_vals = [
+                    rf.value
+                    for k, rf in wins.items()
+                    if k[0] == "certificate special"
+                    and k[2] == "APY"
+                    and rest.replace(" special", "") in k[1]
+                ]
                 vals = [d["roth"].value, d["traditional"].value]
                 resolution = next((v for v in vals if v in cert_vals), None)
-                reason = (f"on {_short(d['roth'].obs.url)} the Roth row says {d['roth'].value} but the "
-                          f"Traditional row says {d['traditional'].value} for the same {rest} special")
+                reason = (
+                    f"on {_short(d['roth'].obs.url)} the Roth row says {d['roth'].value} but the "
+                    f"Traditional row says {d['traditional'].value} for the same {rest} special"
+                )
                 if resolution:
-                    reason += f"; the matching certificate special is {resolution}, so the other row looks stale"
-                out.append(ConflictRec(f"{rest} IRA special APY (Roth vs Traditional)", "sibling",
-                                       vals, [(d['roth'].obs.url, latest, f"Roth {rest}: {vals[0]}"),
-                                              (d['traditional'].obs.url, latest, f"Traditional {rest}: {vals[1]}")],
-                                       resolution, reason, 1.8, product, rest))
+                    reason += (
+                        f"; the matching certificate special is {resolution}, so the other row looks stale"
+                    )
+                out.append(
+                    ConflictRec(
+                        f"{rest.title()} IRA APY (Roth vs Traditional)",
+                        "sibling",
+                        vals,
+                        [
+                            (d["roth"].obs.url, latest, f"Roth {rest}: {vals[0]}"),
+                            (d["traditional"].obs.url, latest, f"Traditional {rest}: {vals[1]}"),
+                        ],
+                        resolution,
+                        reason,
+                        1.8,
+                        product,
+                        rest,
+                    )
+                )
         return out
 
     def narrative_conflicts(self) -> list[ConflictRec]:
@@ -298,10 +381,13 @@ class ConflictEngine:
                 sources.append((o.url, latest, f"{o.statement} (published {fmt_date(o.published)})"))
             # newest value last
             values = [v for v in values if v != best.value] + [best.value]
-            reason = (f"press releases published at different times disagree; the most recent one "
-                      f"({_short(best.url)}, {fmt_date(best.published)}) says '{best.statement}'")
-            out.append(ConflictRec(topic, "narrative", values, sources, best.value, reason, 2.2,
-                                   "narrative", topic))
+            reason = (
+                f"press releases published at different times disagree; the most recent one "
+                f"({_short(best.url)}, {fmt_date(best.published)}) says '{best.statement}'"
+            )
+            out.append(
+                ConflictRec(topic, "narrative", values, sources, best.value, reason, 2.2, "narrative", topic)
+            )
         return out
 
     def all_conflicts(self) -> list[ConflictRec]:
@@ -317,6 +403,7 @@ def _merge_mortgage_purpose(recs: list[ConflictRec]) -> list[ConflictRec]:
         if r.product == "mortgage":
             base = re.sub(r"^(purchase|refinance)\s*:\s*", "", r.label, flags=re.I)
             base = re.sub(r"(?<=\d),(?=\d{3})", "", base)
+            base = re.sub(r"\$(\d{4,})", lambda m: f"${int(m.group(1)):,}", base)  # same key, readable
             groups[base].append(r)
         else:
             out.append(r)
@@ -332,12 +419,23 @@ def _merge_mortgage_purpose(recs: list[ConflictRec]) -> list[ConflictRec]:
                     seen.add(v)
                     values.append(v)
                     sources.append(s)
-        res = "; ".join(f"{'Purchase' if 'purchase' in r.label.lower() else 'Refinance'}: {r.resolution}"
-                        for r in rs)
+        res = "; ".join(
+            f"{'Purchase' if 'purchase' in r.label.lower() else 'Refinance'}: {r.resolution}" for r in rs
+        )
         reason = " | ".join(dict.fromkeys(r.reason for r in rs))
-        out.append(ConflictRec(_topic("mortgage", f"{base}, purchase & refinance", "APR"),
-                               rs[0].kind, values, sources, res, reason,
-                               max(r.importance for r in rs), "mortgage", base))
+        out.append(
+            ConflictRec(
+                _topic("mortgage", f"{base}, purchase & refinance", "APR"),
+                rs[0].kind,
+                values,
+                sources,
+                res,
+                reason,
+                max(r.importance for r in rs),
+                "mortgage",
+                base,
+            )
+        )
     return out
 
 
