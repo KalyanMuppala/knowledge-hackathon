@@ -1,0 +1,17 @@
+# local scoring output
+results/
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# secrets
+.env
+*.key
+# supplied website data: never commit (shared for the event only)
+snapshots/0*/
+snapshots_zip/
+*.pdf
+# misc
+.DS_Store
+.cache/
